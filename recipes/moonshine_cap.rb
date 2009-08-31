@@ -197,11 +197,13 @@ namespace :deploy do
 end
 
 namespace :ruby do
-  desc "Forces a reinstall of Ruby and restarts Apache/Passenger"
+  # desc "Forces a reinstall of Ruby and restarts Apache/Passenger"
+  desc "Forces a reinstall of Ruby and restarts Nginx/Passenger"
   task :upgrade do
     set :force_ruby, 'true'
     moonshine.bootstrap
-    apache.restart
+    # apache.restart
+    nginx.restart
   end
 end
 
@@ -209,6 +211,13 @@ namespace :apache do
   desc "Restarts the Apache web server"
   task :restart do
     sudo 'service apache2 restart'
+  end
+end
+
+namespace :nginx do
+  desc "Restarts the Nginx web server"
+  task :restart do
+    sudo 'service nginx restart'
   end
 end
 

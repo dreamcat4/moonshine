@@ -1,3 +1,4 @@
+:manifest: rails_nginx
 :ruby: ree
 :application: your_app_name
 :user: rails
@@ -8,6 +9,13 @@
 #  - assets1.yourapp.com
 #  - assets2.yourapp.com
 #:scm: git
+:ssl:
+  # :self_signed:  true
+  :only: true
+  :certificate_file: /home/rails/certs/yourdomain.com.crt
+  :certificate_key_file: /home/rails/certs/privkey.pem
+
+  :ip: 204.204.204.204
 :repository: git@github.com:username/your_app_name.git
 # Use :app_symlinks to setup directories under public/ that you want to persist
 # across deployments. They'll be symlinked to the shared directory.
@@ -35,6 +43,9 @@
 #
 # See all the options for Passenger, Apache vhosts, and MySQL in the
 # respective templates: moonshine/lib/moonshine/manifest/rails/templates
+:nginx:
+  # :version: 0.6
+  # :use_global_config: true
 :passenger:
   :max_pool_size: 3
   :use_global_queue: true

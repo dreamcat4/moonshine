@@ -1,5 +1,6 @@
 require "#{File.dirname(__FILE__)}/../../vendor/plugins/moonshine/lib/moonshine.rb"
-class <%= klass_name %> < Moonshine::Manifest::Rails
+# class <%= klass_name %> < Moonshine::Manifest::Rails
+class <%= klass_name %> < Moonshine::Manifest::<%= configuration[:manifest].camelize %>
   # The majority of your configuration should be in <tt>config/moonshine.yml</tt>
   # If necessary, you may provide extra configuration directly in this class 
   # using the configure method. The hash passed to the configure method is deep 

@@ -1,72 +1,49 @@
-module Moonshine::Manifest::Rails::Passenger
+module Moonshine::Manifest::Rails::Php
   # Install the passenger gem
-  def passenger_gem
-    configure(:passenger => {})
-    package "passenger", :ensure => (configuration[:passenger][:version] || :latest), :provider => :gem
+  def php5_fpm
+    configure(:php => {})
+    package "php5-fpm", :ensure => (configuration[:php][:version] || :latest)
+    package "xcache", :ensure => :installed
+    service "php-fpm", ensure => running, enable => true
+    
   end
   
-  def passenger_nginx
-    package "nginx", :ensure => :installed
-      
-    nginx_conf = {
+  def php5_fpm2
+    package "php5-fpm", :ensure => :installed
+
+    php_conf = {
       "prefix" => "/usr/local/nginx",
       "sbin-path" => "/usr/sbin/nginx",
-      
-      "conf-path" => "/etc/nginx/nginx.conf",
-      "error-log-path" => "/var/log/nginx/error.log",
-      "pid-path" => "/var/run/nginx.pid",
-      "lock-path" => "/var/lock/nginx.lock",
-      "http-log-path" => "/var/log/nginx/access.log",
-      "user" => "www-data",
-      "group" => "www-data",
-      "http-client-body-temp-path" => "/var/lib/nginx/body",
-      "http-proxy-temp-path" => "/var/lib/nginx/proxy",
-      "http-fastcgi-temp-path" => "/var/lib/nginx/fastcgi",
-      
-      "with-http_stub_status_module" => true,
-      "with-http_flv_module" => true,
-      "with-http_ssl_module" => true,
-      "with-http_dav_module" => true,
-      "with-http_realip_module" => true,
-      
-      "without-mail_pop3_module" => true,
+            
       "without-mail_imap_module" => true,
       "without-mail_smtp_module" => true,
     }
     
-    nginx_flags = String.new
-    nginx_conf.each do |k,v| 
-      nginx_flags << " --"
-      nginx_flags << "#{k}" if v == true
-      nginx_flags << "#{k}=#{v}" if v.class == String
+    php_flags = String.new
+    php_conf.each do |k,v| 
+      php_flags << " --"
+      php_flags << "#{k}" if v == true
+      php_flags << "#{k}=#{v}" if v.class == String
     end
-
-    nginx_build_cmd = <<-CMD
-    printf "\\n\\n" | passenger-install-nginx-module --prefix #{nginx_conf["prefix"]} \
-    --auto-download --extra-configure-flags="#{nginx_flags.lstrip}"
-    CMD
-    # puts nginx_build_cmd
     
-    exec "build_nginx", :command => nginx_build_cmd, :creates => nginx_conf["sbin-path"]
+    # host_cpus = %x[cat "/proc/cpuinfo" | grep "processor" | wc -l]
+    # host_speed = %x[cat "/proc/cpuinfo" | grep -i "cpu MHz" | sed -e "s/.*\: //g"]
 
-    # Call system()
-    host_cpus = %x[cat "/proc/cpuinfo" | grep "processor" | wc -l]
-    host_speed = %x[cat "/proc/cpuinfo" | grep -i "cpu MHz" | sed -e "s/.*\: //g"]
-    passenger_root = %x[cat "#{nginx_conf['conf-path']}" | grep "passenger_root"]
-    passenger_ruby = %x[cat "#{nginx_conf['conf-path']}" | grep "passenger_ruby"]
-    keepalive_timeout = 5
-    
-    file nginx_conf['conf-path'],
+    file php_fpm[:conf],
       :ensure => :present,
       :content => template(File.join(File.dirname(__FILE__), 'templates', 'nginx.conf.erb')),
-      :require => [exec("build_nginx")],
-      :notify => service("nginx"),
+      :notify => service("php-fpm"),
     
+    package "xcache", :ensure => :installed
     file nginx_flags["prefix"], :ensure => :absent, :recurse => true
-    
-    service "nginx", ensure => running, enable => true
+    service "php-fpm", ensure => running, enable => true
   end
 
+  def php5_apache2
+    package "php5", :ensure => :installed
+    
+  end
+  
   # Build, install, and enable the passenger apache module. Please see the
   # <tt>passenger.conf.erb</tt> template for passenger configuration options.
   def passenger_apache_module

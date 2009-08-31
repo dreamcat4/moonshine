@@ -1,72 +1,37 @@
 module Moonshine::Manifest::Rails::Passenger
   # Install the passenger gem
-  def passenger_gem
-    configure(:passenger => {})
-    package "passenger", :ensure => (configuration[:passenger][:version] || :latest), :provider => :gem
-  end
-  
-  def passenger_nginx
-    package "nginx", :ensure => :installed
-      
-    nginx_conf = {
-      "prefix" => "/usr/local/nginx",
-      "sbin-path" => "/usr/sbin/nginx",
-      
-      "conf-path" => "/etc/nginx/nginx.conf",
-      "error-log-path" => "/var/log/nginx/error.log",
-      "pid-path" => "/var/run/nginx.pid",
-      "lock-path" => "/var/lock/nginx.lock",
-      "http-log-path" => "/var/log/nginx/access.log",
-      "user" => "www-data",
-      "group" => "www-data",
-      "http-client-body-temp-path" => "/var/lib/nginx/body",
-      "http-proxy-temp-path" => "/var/lib/nginx/proxy",
-      "http-fastcgi-temp-path" => "/var/lib/nginx/fastcgi",
-      
-      "with-http_stub_status_module" => true,
-      "with-http_flv_module" => true,
-      "with-http_ssl_module" => true,
-      "with-http_dav_module" => true,
-      "with-http_realip_module" => true,
-      
-      "without-mail_pop3_module" => true,
-      "without-mail_imap_module" => true,
-      "without-mail_smtp_module" => true,
-    }
+  def nginx_server
+    # configure(:nginx => {})
+    # package "nginx", :ensure => :installed
     
-    nginx_flags = String.new
-    nginx_conf.each do |k,v| 
-      nginx_flags << " --"
-      nginx_flags << "#{k}" if v == true
-      nginx_flags << "#{k}=#{v}" if v.class == String
+    # # Patch the init file for our custom nginx build
+    # exec "patch_nginx_init",
+    #   :command => "patch ... #{nginx_path} --auto-download",
+    #   :creates => "#{nginx_path}/sbin/nginx"
+    #   :logoutput => true
+    
+    service "nginx", :require => [package("nginx"), exec("build_nginx"), file("nginx_conf")], 
+                     :restart => '/etc/init.d/nginx restart', :ensure => :running
+
+    if configuration[:nginx][:ssl]
+      # a2enmod('headers')
+      # a2enmod('ssl')
     end
 
-    nginx_build_cmd = <<-CMD
-    printf "\\n\\n" | passenger-install-nginx-module --prefix #{nginx_conf["prefix"]} \
-    --auto-download --extra-configure-flags="#{nginx_flags.lstrip}"
-    CMD
-    # puts nginx_build_cmd
-    
-    exec "build_nginx", :command => nginx_build_cmd, :creates => nginx_conf["sbin-path"]
-
-    # Call system()
-    host_cpus = %x[cat "/proc/cpuinfo" | grep "processor" | wc -l]
-    host_speed = %x[cat "/proc/cpuinfo" | grep -i "cpu MHz" | sed -e "s/.*\: //g"]
-    passenger_root = %x[cat "#{nginx_conf['conf-path']}" | grep "passenger_root"]
-    passenger_ruby = %x[cat "#{nginx_conf['conf-path']}" | grep "passenger_ruby"]
-    keepalive_timeout = 5
-    
-    file nginx_conf['conf-path'],
+    file '/etc/apache2/mods-available/status.conf',
       :ensure => :present,
-      :content => template(File.join(File.dirname(__FILE__), 'templates', 'nginx.conf.erb')),
-      :require => [exec("build_nginx")],
-      :notify => service("nginx"),
-    
-    file nginx_flags["prefix"], :ensure => :absent, :recurse => true
-    
+      :mode => '644',
+      :require => exec('a2enmod status'),
+      :content => status,
+    file '/etc/logrotate.d/varlogapachelog.conf', :ensure => :absent
+
     service "nginx", ensure => running, enable => true
   end
-
+  
+  def nginx_server
+    nginx_restart, :require => [package("nginx"), exec("build_nginx"), file("nginx_conf")]
+  end
+  
   # Build, install, and enable the passenger apache module. Please see the
   # <tt>passenger.conf.erb</tt> template for passenger configuration options.
   def passenger_apache_module
@@ -140,16 +105,60 @@ module Moonshine::Manifest::Rails::Passenger
     configure(:passenger => { :path => "#{Gem.dir}/gems/passenger-#{version}" })
   end
 
-private
+  private
 
-  def passenger_config_boolean(key)
-    if key.nil?
-      nil
-    elsif key == 'Off' || (!!key) == false
-      'Off'
-    else
-      'On'
+    # Symlinks a site from <tt>/etc/apache2/sites-enabled/site</tt> to
+    #<tt>/etc/apache2/sites-available/site</tt>. Creates
+    #<tt>exec("a2ensite #{site}")</tt>.
+    def a2ensite(site, options = {})
+      exec("a2ensite #{site}", {
+          :command => "/usr/sbin/a2ensite #{site}",
+          :unless => "ls /etc/apache2/sites-enabled/#{site}",
+          :require => package("apache2-mpm-worker"),
+          :notify => service("apache2")
+        }.merge(options)
+      )
     end
-  end
+
+    # Removes a symlink from <tt>/etc/apache2/sites-enabled/site</tt> to
+    #<tt>/etc/apache2/sites-available/site</tt>. Creates
+    #<tt>exec("a2dissite #{site}")</tt>.
+    def a2dissite(site, options = {})
+      exec("a2dissite #{site}", {
+          :command => "/usr/sbin/a2dissite #{site}",
+          :onlyif => "ls /etc/apache2/sites-enabled/#{site}",
+          :require => package("apache2-mpm-worker"),
+          :notify => service("apache2")
+        }.merge(options)
+      )
+    end
+
+    # Symlinks a module from <tt>/etc/apache2/mods-enabled/mod</tt> to
+    #<tt>/etc/apache2/mods-available/mod</tt>. Creates
+    #<tt>exec("a2enmod #{mod}")</tt>.
+    def a2enmod(mod, options = {})
+      exec("a2enmod #{mod}", {
+          :command => "/usr/sbin/a2enmod #{mod}",
+          :unless => "ls /etc/apache2/mods-enabled/#{mod}.load",
+          :require => package("apache2-mpm-worker"),
+          :notify => service("apache2")
+        }.merge(options)
+      )
+    end
+
+    # Removes a symlink from <tt>/etc/apache2/mods-enabled/mod</tt> to
+    #<tt>/etc/apache2/mods-available/mod</tt>. Creates
+    #<tt>exec("a2dismod #{mod}")</tt>.
+    def a2dismod(mod, options = {})
+      exec("a2dismod #{mod}", {
+          :command => "/usr/sbin/a2enmod #{mod}",
+          :onlyif => "ls /etc/apache2/mods-enabled/#{mod}.load",
+          :require => package("apache2-mpm-worker"),
+          :notify => service("apache2")
+        }.merge(options)
+      )
+    end
+
+
 
 end
