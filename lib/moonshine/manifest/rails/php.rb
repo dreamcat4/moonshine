@@ -8,10 +8,10 @@ module Moonshine::Manifest::Rails::Php
     
   end
   
-  def php5_fpm2
+  def configure_php5_fpm
     package "php5-fpm", :ensure => :installed
 
-    php_conf = {
+    nginx_conf = {
       "prefix" => "/usr/local/nginx",
       "sbin-path" => "/usr/sbin/nginx",
             
@@ -19,16 +19,6 @@ module Moonshine::Manifest::Rails::Php
       "without-mail_smtp_module" => true,
     }
     
-    php_flags = String.new
-    php_conf.each do |k,v| 
-      php_flags << " --"
-      php_flags << "#{k}" if v == true
-      php_flags << "#{k}=#{v}" if v.class == String
-    end
-    
-    # host_cpus = %x[cat "/proc/cpuinfo" | grep "processor" | wc -l]
-    # host_speed = %x[cat "/proc/cpuinfo" | grep -i "cpu MHz" | sed -e "s/.*\: //g"]
-
     file php_fpm[:conf],
       :ensure => :present,
       :content => template(File.join(File.dirname(__FILE__), 'templates', 'nginx.conf.erb')),
